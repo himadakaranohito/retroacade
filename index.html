@@ -215,6 +215,11 @@
     .shooter  .cabinet-body{ border-color:#006666; box-shadow:0 0 22px rgba(0,255,255,.25), 0 6px 20px rgba(0,0,0,.6); }
     .shooter  .panel-name  { color:#00ffff; text-shadow:0 0 6px #00ffff; }
 
+    .maze     .screen      { box-shadow:0 0 18px #ff2244, inset 0 0 10px rgba(255,34,68,.1); }
+    .maze     .screen-text { color:#ff2244; text-shadow:0 0 8px #ff2244; }
+    .maze     .cabinet-body{ border-color:#660011; box-shadow:0 0 22px rgba(255,34,68,.25), 0 6px 20px rgba(0,0,0,.6); }
+    .maze     .panel-name  { color:#ff2244; text-shadow:0 0 6px #ff2244; }
+
     /* Off / coming soon */
     .off { cursor:default; }
     .off .screen      { box-shadow:none; }
@@ -353,20 +358,24 @@
       </div>
     </div>
 
-    <!-- COMING SOON x2 -->
-    <div class="cabinet off">
+    <!-- MAZE HUNTER -->
+    <div class="cabinet maze" onclick="openGame('games/maze_hunter.html','maze')">
       <div class="cabinet-body">
-        <div class="coming-badge">COMING SOON</div>
         <div class="screen">
-          <div class="screen-text">? ? ?</div>
+          <div class="screen-text">
+            <div class="screen-art">[ + ]</div>
+            MAZE<br>HUNTER
+          </div>
         </div>
         <div class="panel">
-          <div class="panel-name">UNKNOWN</div>
+          <div class="panel-name">MAZE HUNTER</div>
           <div class="coin-slot"></div>
+          <div class="insert-coin">INSERT COIN</div>
         </div>
       </div>
     </div>
 
+    <!-- COMING SOON x1 -->
     <div class="cabinet off">
       <div class="cabinet-body">
         <div class="coming-badge">COMING SOON</div>
@@ -393,7 +402,7 @@
   </div>
 
   <script>
-    const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff' };
+    const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff', maze:'#ff2244' };
 
     function openGame(url, type) {
       const modal = document.getElementById('modal');
