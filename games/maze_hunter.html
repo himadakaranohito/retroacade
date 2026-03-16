@@ -209,19 +209,56 @@
         const bright = Math.max(0.15, 1 - tY/9);
         const flash  = e.hitFlash > 0;
 
-        const headH = Math.floor(sprH*0.2);
-        const bodyH = Math.floor(sprH*0.55);
-        const legsH = Math.floor(sprH*0.25);
+        const headH = Math.floor(sprH*0.18);
+        const bodyH = Math.floor(sprH*0.42);
+        const legH  = Math.floor(sprH*0.28);
+        const bootH = Math.floor(sprH*0.12);
 
         for (let col=Math.max(0,startX); col<Math.min(W,endX); col++) {
           if (zBuf[col] <= tY) continue;
+          const rx = (col - startX) / sprW; // 0.0 ~ 1.0
+
           ctx.globalAlpha = bright;
-          ctx.fillStyle = flash ? '#fff' : '#ffaa88';
-          ctx.fillRect(col, startY, 1, headH);
-          ctx.fillStyle = flash ? '#fff' : '#cc2200';
-          ctx.fillRect(col, startY+headH, 1, bodyH);
-          ctx.fillStyle = flash ? '#fff' : '#551100';
-          ctx.fillRect(col, startY+headH+bodyH, 1, legsH);
+
+          if (flash) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(col, startY, 1, sprH);
+            continue;
+          }
+
+          // HEAD (center 42%)
+          if (rx >= 0.29 && rx <= 0.71) {
+            ctx.fillStyle = '#c8956a';
+            ctx.fillRect(col, startY, 1, headH);
+            // Red glowing eyes
+            const eyeTop = startY + Math.floor(headH*0.3);
+            const eyeH   = Math.max(1, Math.floor(headH*0.28));
+            if ((rx >= 0.34 && rx <= 0.45) || (rx >= 0.55 && rx <= 0.66)) {
+              ctx.fillStyle = '#ff2200';
+              ctx.fillRect(col, eyeTop, 1, eyeH);
+            }
+          }
+
+          // BODY (center 56%)
+          if (rx >= 0.22 && rx <= 0.78) {
+            ctx.fillStyle = '#3d6b3a';
+            ctx.fillRect(col, startY+headH, 1, bodyH);
+          }
+
+          // ARMS (outer 14% each side, at body level)
+          if ((rx >= 0.05 && rx <= 0.22) || (rx >= 0.78 && rx <= 0.95)) {
+            ctx.fillStyle = '#2e5228';
+            ctx.fillRect(col, startY+headH+Math.floor(bodyH*0.08), 1, Math.floor(bodyH*0.72));
+          }
+
+          // LEGS (two separate: left 20-44%, right 56-80%)
+          const inLeg = (rx >= 0.20 && rx <= 0.44) || (rx >= 0.56 && rx <= 0.80);
+          if (inLeg) {
+            ctx.fillStyle = '#2a3d28';
+            ctx.fillRect(col, startY+headH+bodyH, 1, legH);
+            ctx.fillStyle = '#1a1208';
+            ctx.fillRect(col, startY+headH+bodyH+legH, 1, bootH);
+          }
         }
         ctx.globalAlpha = 1;
         if (e.hitFlash > 0) e.hitFlash--;
