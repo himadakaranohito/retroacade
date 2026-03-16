@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RETRO ARCADE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #07070f;
+      font-family: 'Press Start 2P', monospace;
+      color: #00ff41;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.12) 2px,
+        rgba(0,0,0,0.12) 4px
+      );
+      pointer-events: none;
+      z-index: 9998;
+    }
+
+    /* Floor grid */
+    .floor-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,65,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,65,0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 48px 20px 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header h1 {
+      font-size: clamp(1.4rem, 4vw, 2.8rem);
+      color: #ff00ff;
+      text-shadow: 0 0 8px #ff00ff, 0 0 20px #ff00ff, 0 0 40px #ff00ff;
+      letter-spacing: 0.15em;
+      animation: flicker 6s infinite;
+    }
+
+    .header .subtitle {
+      margin-top: 14px;
+      font-size: 0.55rem;
+      color: #00ffff;
+      text-shadow: 0 0 6px #00ffff;
+      letter-spacing: 0.4em;
+      animation: blink 2s infinite;
+    }
+
+    @keyframes flicker {
+      0%,92%,100% { opacity:1; }
+      93% { opacity:.7; }
+      94% { opacity:1; }
+      96% { opacity:.6; }
+      97% { opacity:1; }
+    }
+    @keyframes blink {
+      0%,49% { opacity:1; }
+      50%,100% { opacity:0; }
+    }
+
+    /* Hall */
+    .hall {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 36px 44px;
+      padding: 40px 24px 80px;
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Cabinet */
+    .cabinet {
+      cursor: pointer;
+      transition: transform .2s, filter .2s;
+    }
+    .cabinet:hover:not(.off) {
+      transform: translateY(-8px) scale(1.04);
+      filter: brightness(1.2);
+    }
+
+    .cabinet-body {
+      width: 200px;
+      height: 270px;
+      background: linear-gradient(160deg, #2a1a08, #160d04);
+      border: 3px solid #7a5810;
+      border-radius: 10px;
+      position: relative;
+      box-shadow: 0 6px 20px rgba(0,0,0,.6), inset 0 0 16px rgba(0,0,0,.4);
+    }
+
+    /* Wood grain */
+    .cabinet-body::before {
+      content:'';
+      position:absolute;
+      inset:5px;
+      border-radius:7px;
+      background: repeating-linear-gradient(
+        93deg,
+        transparent,
+        transparent 10px,
+        rgba(180,120,30,.07) 10px,
+        rgba(180,120,30,.07) 11px
+      );
+      pointer-events:none;
+    }
+
+    /* Screen */
+    .screen {
+      position:absolute;
+      top:22px; left:18px; right:18px;
+      height:152px;
+      background:#000;
+      border:3px solid #222;
+      border-radius:4px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+    }
+
+    /* Glare */
+    .screen::after {
+      content:'';
+      position:absolute;
+      top:0; left:0;
+      width:60%; height:50%;
+      background: linear-gradient(135deg, rgba(255,255,255,.07), transparent);
+      pointer-events:none;
+    }
+
+    .screen-text {
+      font-size:.5rem;
+      text-align:center;
+      line-height:1.9;
+      z-index:1;
+      padding:6px;
+    }
+
+    .screen-art {
+      font-size:.75rem;
+      margin-bottom:6px;
+      letter-spacing:.2em;
+    }
+
+    /* Panel */
+    .panel {
+      position:absolute;
+      bottom:12px; left:14px; right:14px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:7px;
+    }
+
+    .panel-name {
+      font-size:.38rem;
+      letter-spacing:.08em;
+      text-align:center;
+    }
+
+    .coin-slot {
+      width:38px; height:4px;
+      background:#1a1a1a;
+      border:1px solid #444;
+      border-radius:2px;
+    }
+
+    .insert-coin {
+      font-size:.28rem;
+      color:#ffee00;
+      text-shadow:0 0 6px #ffee00;
+      animation:blink 1s infinite;
+    }
+
+    /* Color themes */
+    .snake   .screen      { box-shadow:0 0 18px #00ff41, inset 0 0 10px rgba(0,255,65,.1); }
+    .snake   .screen-text { color:#00ff41; text-shadow:0 0 8px #00ff41; }
+    .snake   .cabinet-body{ border-color:#1a6620; box-shadow:0 0 22px rgba(0,255,65,.25), 0 6px 20px rgba(0,0,0,.6); }
+    .snake   .panel-name  { color:#00ff41; text-shadow:0 0 6px #00ff41; }
+
+    .breakout .screen      { box-shadow:0 0 18px #ff6600, inset 0 0 10px rgba(255,102,0,.1); }
+    .breakout .screen-text { color:#ff6600; text-shadow:0 0 8px #ff6600; }
+    .breakout .cabinet-body{ border-color:#7a3300; box-shadow:0 0 22px rgba(255,102,0,.25), 0 6px 20px rgba(0,0,0,.6); }
+    .breakout .panel-name  { color:#ff6600; text-shadow:0 0 6px #ff6600; }
+
+    .shooter  .screen      { box-shadow:0 0 18px #00ffff, inset 0 0 10px rgba(0,255,255,.1); }
+    .shooter  .screen-text { color:#00ffff; text-shadow:0 0 8px #00ffff; }
+    .shooter  .cabinet-body{ border-color:#006666; box-shadow:0 0 22px rgba(0,255,255,.25), 0 6px 20px rgba(0,0,0,.6); }
+    .shooter  .panel-name  { color:#00ffff; text-shadow:0 0 6px #00ffff; }
+
+    /* Off / coming soon */
+    .off { cursor:default; }
+    .off .screen      { box-shadow:none; }
+    .off .screen-text { color:#2a2a2a; }
+    .off .cabinet-body{ border-color:#2a2a2a; box-shadow:0 4px 10px rgba(0,0,0,.5); }
+    .off .panel-name  { color:#2a2a2a; }
+    .off .insert-coin { display:none; }
+
+    .coming-badge {
+      position:absolute;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%) rotate(-18deg);
+      background:rgba(180,0,0,.85);
+      color:#fff;
+      font-size:.32rem;
+      padding:4px 10px;
+      border:1.5px solid #fff;
+      white-space:nowrap;
+      z-index:10;
+    }
+
+    /* Modal */
+    .modal {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.88);
+      z-index:9999;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal.open { display:flex; }
+
+    .modal-box {
+      position:relative;
+      background:#000;
+      border:3px solid #fff;
+      border-radius:4px;
+      padding:16px;
+    }
+
+    .modal-close {
+      position:absolute;
+      top:8px; right:8px;
+      background:none;
+      border:2px solid currentColor;
+      color:inherit;
+      font-family:'Press Start 2P',monospace;
+      font-size:.42rem;
+      padding:3px 8px;
+      cursor:pointer;
+      z-index:1;
+    }
+    .modal-close:hover { background:rgba(255,255,255,.12); }
+
+    .game-frame {
+      display:block;
+      border:none;
+      width:460px;
+      height:510px;
+    }
+
+    /* Footer */
+    footer {
+      text-align:center;
+      padding:20px;
+      font-size:.35rem;
+      color:#1e1e1e;
+      position:relative;
+      z-index:1;
+    }
+
+    @media(max-width:520px) {
+      .game-frame { width:320px; height:400px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="floor-bg"></div>
+
+  <header class="header">
+    <h1>RETRO ARCADE</h1>
+    <p class="subtitle">-- INSERT COIN TO PLAY --</p>
+  </header>
+
+  <main class="hall">
+
+    <!-- SNAKE -->
+    <div class="cabinet snake" onclick="open('games/snake.html','snake')">
+      <div class="cabinet-body">
+        <div class="screen">
+          <div class="screen-text">
+            <div class="screen-art">&gt;--&gt;--o</div>
+            SNAKE<br>ATTACK
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">SNAKE ATTACK</div>
+          <div class="coin-slot"></div>
+          <div class="insert-coin">INSERT COIN</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BREAKOUT -->
+    <div class="cabinet breakout" onclick="open('games/breakout.html','breakout')">
+      <div class="cabinet-body">
+        <div class="screen">
+          <div class="screen-text">
+            <div class="screen-art">|||||||||</div>
+            BLOCK<br>BUSTER
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">BLOCK BUSTER</div>
+          <div class="coin-slot"></div>
+          <div class="insert-coin">INSERT COIN</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHOOTER -->
+    <div class="cabinet shooter" onclick="open('games/shooter.html','shooter')">
+      <div class="cabinet-body">
+        <div class="screen">
+          <div class="screen-text">
+            <div class="screen-art">/\/\/\/\</div>
+            GALACTIC<br>STRIKER
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">GALACTIC STRIKER</div>
+          <div class="coin-slot"></div>
+          <div class="insert-coin">INSERT COIN</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMING SOON x2 -->
+    <div class="cabinet off">
+      <div class="cabinet-body">
+        <div class="coming-badge">COMING SOON</div>
+        <div class="screen">
+          <div class="screen-text">? ? ?</div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">UNKNOWN</div>
+          <div class="coin-slot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cabinet off">
+      <div class="cabinet-body">
+        <div class="coming-badge">COMING SOON</div>
+        <div class="screen">
+          <div class="screen-text">? ? ?</div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">UNKNOWN</div>
+          <div class="coin-slot"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>&copy; 2026 RETRO ARCADE</footer>
+
+  <!-- Modal -->
+  <div class="modal" id="modal">
+    <div class="modal-box" id="modalBox">
+      <button class="modal-close" onclick="close()">X</button>
+      <iframe class="game-frame" id="gameFrame" src=""></iframe>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff' };
+
+    function open(url, type) {
+      const modal = document.getElementById('modal');
+      const box   = document.getElementById('modalBox');
+      const frame = document.getElementById('gameFrame');
+      const c = COLORS[type] || '#fff';
+      frame.src = url;
+      box.style.borderColor = c;
+      box.style.boxShadow = `0 0 32px ${c}`;
+      box.style.color = c;
+      modal.classList.add('open');
+    }
+
+    function close() {
+      document.getElementById('gameFrame').src = '';
+      document.getElementById('modal').classList.remove('open');
+    }
+
+    document.getElementById('modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('modal')) close();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') close();
+    });
+  </script>
+</body>
+</html>
