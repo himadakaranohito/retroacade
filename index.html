@@ -303,7 +303,7 @@
   <main class="hall">
 
     <!-- SNAKE -->
-    <div class="cabinet snake" onclick="open('games/snake.html','snake')">
+    <div class="cabinet snake" onclick="openGame('games/snake.html','snake')">
       <div class="cabinet-body">
         <div class="screen">
           <div class="screen-text">
@@ -320,7 +320,7 @@
     </div>
 
     <!-- BREAKOUT -->
-    <div class="cabinet breakout" onclick="open('games/breakout.html','breakout')">
+    <div class="cabinet breakout" onclick="openGame('games/breakout.html','breakout')">
       <div class="cabinet-body">
         <div class="screen">
           <div class="screen-text">
@@ -337,7 +337,7 @@
     </div>
 
     <!-- SHOOTER -->
-    <div class="cabinet shooter" onclick="open('games/shooter.html','shooter')">
+    <div class="cabinet shooter" onclick="openGame('games/shooter.html','shooter')">
       <div class="cabinet-body">
         <div class="screen">
           <div class="screen-text">
@@ -395,7 +395,7 @@
   <script>
     const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff' };
 
-    function open(url, type) {
+    function openGame(url, type) {
       const modal = document.getElementById('modal');
       const box   = document.getElementById('modalBox');
       const frame = document.getElementById('gameFrame');
@@ -407,17 +407,17 @@
       modal.classList.add('open');
     }
 
-    function close() {
+    function closeGame() {
       document.getElementById('gameFrame').src = '';
       document.getElementById('modal').classList.remove('open');
     }
 
     document.getElementById('modal').addEventListener('click', e => {
-      if (e.target === document.getElementById('modal')) close();
+      if (e.target === document.getElementById('modal')) closeGame();
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') closeGame();
     });
   </script>
 </body>
