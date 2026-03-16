@@ -220,6 +220,11 @@
     .maze     .cabinet-body{ border-color:#660011; box-shadow:0 0 22px rgba(255,34,68,.25), 0 6px 20px rgba(0,0,0,.6); }
     .maze     .panel-name  { color:#ff2244; text-shadow:0 0 6px #ff2244; }
 
+    .deadzone .screen      { box-shadow:0 0 18px #aaff00, inset 0 0 10px rgba(170,255,0,.1); }
+    .deadzone .screen-text { color:#aaff00; text-shadow:0 0 8px #aaff00; }
+    .deadzone .cabinet-body{ border-color:#335500; box-shadow:0 0 22px rgba(170,255,0,.25), 0 6px 20px rgba(0,0,0,.6); }
+    .deadzone .panel-name  { color:#aaff00; text-shadow:0 0 6px #aaff00; }
+
     /* Off / coming soon */
     .off { cursor:default; }
     .off .screen      { box-shadow:none; }
@@ -375,6 +380,23 @@
       </div>
     </div>
 
+    <!-- DEAD ZONE -->
+    <div class="cabinet deadzone" onclick="openGame('games/dead_zone.html','deadzone')">
+      <div class="cabinet-body">
+        <div class="screen">
+          <div class="screen-text">
+            <div class="screen-art">+[   ]+</div>
+            DEAD<br>ZONE
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-name">DEAD ZONE</div>
+          <div class="coin-slot"></div>
+          <div class="insert-coin">INSERT COIN</div>
+        </div>
+      </div>
+    </div>
+
     <!-- COMING SOON x1 -->
     <div class="cabinet off">
       <div class="cabinet-body">
@@ -402,7 +424,7 @@
   </div>
 
   <script>
-    const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff', maze:'#ff2244' };
+    const COLORS = { snake:'#00ff41', breakout:'#ff6600', shooter:'#00ffff', maze:'#ff2244', deadzone:'#aaff00' };
 
     function openGame(url, type) {
       const modal = document.getElementById('modal');

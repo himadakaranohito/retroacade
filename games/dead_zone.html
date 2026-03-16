@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>DEAD ZONE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background:#000;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      height:100vh;
+      font-family:'Press Start 2P',monospace;
+      color:#aaff00;
+      user-select:none; overflow:hidden;
+    }
+    h1 { font-size:.65rem; text-shadow:0 0 10px #aaff00; margin-bottom:7px; letter-spacing:.15em; }
+    .hud-top { display:flex; align-items:center; gap:14px; margin-bottom:5px; font-size:.33rem; }
+    .hearts { display:flex; gap:3px; }
+    .heart { font-size:.5rem; line-height:1; }
+    .heart.empty { opacity:.2; }
+    .ammo-bar { display:flex; gap:3px; align-items:center; }
+    .bullet { width:6px; height:12px; border-radius:3px 3px 1px 1px; background:#aaff00; box-shadow:0 0 4px #aaff00; }
+    .bullet.spent { background:#222; box-shadow:none; }
+    .reload-msg { font-size:.28rem; color:#ff4400; animation:blink 0.4s infinite; }
+    .canvas-wrap { position:relative; cursor:crosshair; }
+    canvas { display:block; border:2px solid #aaff00; box-shadow:0 0 16px #aaff00; }
+    .overlay {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      background:rgba(0,0,0,.88); gap:12px;
+      pointer-events:none;
+    }
+    .overlay h2 { font-size:.75rem; color:#aaff00; text-shadow:0 0 16px #aaff00; }
+    .overlay .sub { font-size:.32rem; color:#777; line-height:2; text-align:center; }
+    .overlay .blink { font-size:.32rem; color:#aaff00; animation:blink 1s infinite; }
+    .wave-banner {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      font-size:.6rem; color:#aaff00; text-shadow:0 0 20px #aaff00;
+      pointer-events:none; opacity:0; transition:opacity .3s;
+    }
+    .wave-banner.show { opacity:1; }
+    .controls { margin-top:5px; font-size:.24rem; color:#2a3300; text-align:center; line-height:2.2; }
+    @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  </style>
+</head>
+<body>
+  <h1>DEAD ZONE</h1>
+  <div class="hud-top">
+    <span>SCORE:<span id="score">0</span></span>
+    <div class="hearts" id="hearts"></div>
+    <div class="ammo-bar" id="ammoBar"></div>
+    <span id="waveLabel">WAVE 1</span>
+  </div>
+  <div class="canvas-wrap" id="wrap">
+    <canvas id="c" width="420" height="400"></canvas>
+    <div class="overlay" id="overlay">
+      <h2>DEAD ZONE</h2>
+      <p class="sub">SHOOT THE UNDEAD<br>HEADSHOT = INSTANT KILL</p>
+      <p class="blink">CLICK TO START</p>
+    </div>
+    <div class="wave-banner" id="waveBanner"></div>
+  </div>
+  <div class="controls">
+    AIM: MOUSE &nbsp;|&nbsp; SHOOT: CLICK &nbsp;|&nbsp; RELOAD: R KEY OR WAIT
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const HORIZON = H * 0.38;
+
+    // === GAME STATE ===
+    let zombies, particles, score, hp, ammo, reloading, reloadTimer;
+    let wave, waveKills, waveTotal, spawnTimer, spawnInterval, waveClearing;
+    let state = 'idle', raf;
+    let muzzleFlash = 0, shakeX = 0, shakeY = 0;
+    let mouseX = W/2, mouseY = H/2;
+
+    // === WAVE DEFINITIONS ===
+    const WAVE_DEFS = [
+      [{type:'walker', n:5}],
+      [{type:'walker', n:4}, {type:'runner', n:3}],
+      [{type:'walker', n:5}, {type:'runner', n:3}, {type:'brute', n:1}],
+      [{type:'walker', n:6}, {type:'runner', n:4}, {type:'brute', n:2}],
+      [{type:'walker', n:6}, {type:'runner', n:5}, {type:'brute', n:3}],
+    ];
+
+    const ZOMBIE_DEF = {
+      walker: { hp:1, speed:0.0012, size:1.0,   score:10,  skin:'#7a9960', shirt:'#4a3828', pants:'#2a1e18' },
+      runner: { hp:1, speed:0.0022, size:0.85,  score:20,  skin:'#6a8858', shirt:'#3a2820', pants:'#1e1410' },
+      brute:  { hp:4, speed:0.0007, size:1.5,   score:50,  skin:'#556644', shirt:'#2a3818', pants:'#1a2010' },
+    };
+
+    // === BACKGROUND OBJECTS (static) ===
+    const GRAVES = [
+      {wx:0.18,d:0.45}, {wx:0.38,d:0.32}, {wx:0.55,d:0.28},
+      {wx:0.72,d:0.40}, {wx:0.85,d:0.35}, {wx:0.28,d:0.55},
+      {wx:0.62,d:0.50}, {wx:0.12,d:0.30}, {wx:0.90,d:0.22},
+    ];
+
+    // === INIT ===
+    function init() {
+      zombies = []; particles = [];
+      score = 0; hp = 5; ammo = 6;
+      reloading = false; reloadTimer = 0;
+      wave = 0; waveKills = 0; waveTotal = 0;
+      spawnTimer = 0; waveClearing = false;
+      muzzleFlash = 0; shakeX = 0; shakeY = 0;
+      buildHUD();
+      startWave();
+    }
+
+    function buildHUD() {
+      // Hearts
+      const hc = document.getElementById('hearts');
+      hc.innerHTML = '';
+      for (let i=0; i<5; i++) {
+        const d = document.createElement('div');
+        d.className = 'heart' + (i < hp ? '' : ' empty');
+        d.textContent = '♥';
+        hc.appendChild(d);
+      }
+      // Ammo
+      refreshAmmoHUD();
+      document.getElementById('score').textContent = score;
+    }
+
+    function refreshAmmoHUD() {
+      const ab = document.getElementById('ammoBar');
+      ab.innerHTML = '';
+      if (reloading) {
+        const m = document.createElement('div');
+        m.className = 'reload-msg';
+        m.textContent = 'RELOAD...';
+        ab.appendChild(m);
+        return;
+      }
+      for (let i=0; i<6; i++) {
+        const d = document.createElement('div');
+        d.className = 'bullet' + (i < ammo ? '' : ' spent');
+        ab.appendChild(d);
+      }
+    }
+
+    function startWave() {
+      if (wave >= WAVE_DEFS.length) wave = WAVE_DEFS.length - 1;
+      waveClearing = false;
+      waveKills = 0;
+      waveTotal = 0;
+      zombies = [];
+
+      // Build spawn queue from wave def
+      const def = WAVE_DEFS[wave];
+      spawnQueue = [];
+      for (const d of def) {
+        for (let i=0; i<d.n; i++) spawnQueue.push(d.type);
+        waveTotal += d.n;
+      }
+      shuffle(spawnQueue);
+      spawnTimer = 60;
+      spawnInterval = Math.max(50, 100 - wave * 10);
+      document.getElementById('waveLabel').textContent = 'WAVE ' + (wave+1);
+      showWaveBanner('WAVE ' + (wave+1));
+    }
+
+    let spawnQueue = [];
+
+    function shuffle(arr) {
+      for (let i=arr.length-1; i>0; i--) {
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]] = [arr[j],arr[i]];
+      }
+    }
+
+    function showWaveBanner(text) {
+      const b = document.getElementById('waveBanner');
+      b.textContent = text;
+      b.classList.add('show');
+      setTimeout(() => b.classList.remove('show'), 1600);
+    }
+
+    // === ZOMBIE SPAWN ===
+    function spawnZombie(type) {
+      const def = ZOMBIE_DEF[type];
+      const wx = 0.08 + Math.random() * 0.84;
+      zombies.push({
+        type, wx,
+        depth: 0.0,
+        hp: def.hp,
+        maxHp: def.hp,
+        speed: def.speed * (0.85 + Math.random()*0.3),
+        size: def.size,
+        score: def.score,
+        skin: def.skin, shirt: def.shirt, pants: def.pants,
+        shirtColor: def.shirt,
+        hitTimer: 0,
+        dead: false,
+        deathTimer: 0,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    // === DRAW BACKGROUND ===
+    function drawBg() {
+      // Sky
+      const sky = ctx.createLinearGradient(0,0,0,HORIZON);
+      sky.addColorStop(0,'#03000a');
+      sky.addColorStop(1,'#100520');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0,0,W,HORIZON);
+
+      // Moon
+      ctx.fillStyle = '#c8c8a8';
+      ctx.shadowColor = '#c8c8a8'; ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.arc(W*0.12, H*0.1, 20, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#aaa898';
+      [[-6,-4,5],[5,3,6],[-2,7,3]].forEach(([x,y,r]) => {
+        ctx.beginPath(); ctx.arc(W*0.12+x, H*0.1+y, r, 0, Math.PI*2); ctx.fill();
+      });
+
+      // Stars
+      ctx.fillStyle = 'rgba(255,255,230,0.7)';
+      for (const s of STARS) {
+        ctx.fillRect(s.x, s.y, s.r>1?2:1, s.r>1?2:1);
+      }
+
+      // Ground
+      const gnd = ctx.createLinearGradient(0,HORIZON,0,H);
+      gnd.addColorStop(0,'#0e0a06');
+      gnd.addColorStop(1,'#050300');
+      ctx.fillStyle = gnd;
+      ctx.fillRect(0,HORIZON,W,H-HORIZON);
+
+      // Dead trees (silhouette)
+      drawTree(W*0.04, HORIZON, 55, 3);
+      drawTree(W*0.96, HORIZON, 48, -3);
+      drawTree(W*0.88, HORIZON, 38, -2);
+
+      // Gravestones in perspective
+      for (const g of GRAVES) {
+        const sx = worldToScreenX(g.wx, g.d);
+        const sy = worldToScreenY(g.d);
+        const sh = (18 + g.d * 18);
+        const sw = sh * 0.65;
+        ctx.fillStyle = '#111018';
+        ctx.fillRect(sx-sw/2, sy-sh, sw, sh*0.72);
+        ctx.beginPath();
+        ctx.arc(sx, sy - sh + sw/2.8, sw/2, Math.PI, 0);
+        ctx.fill();
+      }
+
+      // Fog at horizon
+      const fog = ctx.createLinearGradient(0, HORIZON-15, 0, HORIZON+50);
+      fog.addColorStop(0,'transparent');
+      fog.addColorStop(0.4,'rgba(30,8,40,0.45)');
+      fog.addColorStop(1,'transparent');
+      ctx.fillStyle = fog;
+      ctx.fillRect(0, HORIZON-15, W, 65);
+    }
+
+    function worldToScreenX(wx, depth) {
+      return W/2 + (wx - 0.5) * W * depth;
+    }
+    function worldToScreenY(depth) {
+      return HORIZON + (H - HORIZON) * depth;
+    }
+
+    // === DRAW TREE ===
+    function drawTree(x, y, h, lean) {
+      ctx.strokeStyle = '#060304';
+      ctx.lineCap = 'round';
+      function branch(bx, by, len, angle, depth) {
+        if (depth <= 0 || len < 4) return;
+        const ex = bx + Math.sin(angle)*len;
+        const ey = by - Math.cos(angle)*len;
+        ctx.lineWidth = Math.max(1, depth*1.6);
+        ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(ex,ey); ctx.stroke();
+        branch(ex, ey, len*0.6,  angle + 0.5 + Math.random()*0.2, depth-1);
+        branch(ex, ey, len*0.55, angle - 0.5 - Math.random()*0.2, depth-1);
+      }
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+lean, y-h); ctx.stroke();
+      branch(x+lean, y-h, h*0.45, (lean>0?0.3:-0.3), 4);
+      branch(x+lean, y-h, h*0.4,  (lean>0?-0.2:0.2), 4);
+    }
+
+    // === DRAW ZOMBIE ===
+    function drawZombie(z) {
+      const depth = z.dead ? z.depth : z.depth;
+      const sx = worldToScreenX(z.wx, depth);
+      const feetY = worldToScreenY(depth);
+      const baseH = Math.max(14, 190 * depth) * z.size;
+      const baseW = baseH * 0.5;
+
+      if (baseH < 6) return;
+
+      const t = Date.now() * 0.004 + z.phase;
+      const bob = z.dead ? 0 : Math.sin(t) * baseH * 0.025;
+      const legSwing = z.dead ? 0 : Math.sin(t) * baseH * 0.04;
+
+      const headR = baseW * 0.28;
+      const headY = feetY - baseH + headR + bob;
+      const bodyTop = headY + headR;
+      const bodyH = baseH * 0.38;
+      const pantsTop = bodyTop + bodyH;
+      const pantsH = baseH * 0.3;
+      const bootH = baseH * 0.1;
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(sx, feetY, baseW*0.55, baseH*0.04, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // Legs + Boots
+      [-1, 1].forEach((side, i) => {
+        const lx = sx + side * baseW * 0.14;
+        const swing = side === -1 ? legSwing : -legSwing;
+        ctx.fillStyle = z.pants;
+        ctx.fillRect(lx - baseW*0.12, pantsTop + swing, baseW*0.22, pantsH);
+        ctx.fillStyle = '#1a1208';
+        ctx.fillRect(lx - baseW*0.13, pantsTop + pantsH + swing, baseW*0.24, bootH);
+      });
+
+      // Body (shirt)
+      ctx.fillStyle = z.shirtColor;
+      ctx.fillRect(sx - baseW*0.3, bodyTop + bob, baseW*0.6, bodyH);
+
+      // Belt line
+      ctx.fillStyle = '#2a1a08';
+      ctx.fillRect(sx - baseW*0.3, pantsTop - baseH*0.03 + bob, baseW*0.6, baseH*0.05);
+
+      // Arms (outstretched zombie pose)
+      ctx.lineCap = 'round';
+      const armLen = baseH * 0.34;
+      const armY = bodyTop + bodyH*0.15 + bob;
+      [-1,1].forEach(side => {
+        const armSwing = Math.sin(t*0.8 + (side===1?Math.PI:0)) * baseH * 0.04;
+        ctx.strokeStyle = z.skin;
+        ctx.lineWidth = Math.max(1.5, baseW*0.14);
+        ctx.beginPath();
+        ctx.moveTo(sx + side*baseW*0.28, armY);
+        ctx.lineTo(sx + side*(baseW*0.28 + armLen), armY - armLen*0.2 + armSwing);
+        ctx.stroke();
+      });
+
+      // Head
+      ctx.fillStyle = z.skin;
+      ctx.shadowColor = 'transparent';
+      ctx.beginPath();
+      ctx.arc(sx, headY, headR, 0, Math.PI*2);
+      ctx.fill();
+
+      // Eyes
+      if (z.dead) {
+        // X eyes
+        ctx.strokeStyle = '#ff2200';
+        ctx.lineWidth = Math.max(1, headR*0.2);
+        [-1,1].forEach(side => {
+          const ex = sx + side*headR*0.38, ey = headY - headR*0.1;
+          const s = headR*0.18;
+          ctx.beginPath();
+          ctx.moveTo(ex-s,ey-s); ctx.lineTo(ex+s,ey+s);
+          ctx.moveTo(ex+s,ey-s); ctx.lineTo(ex-s,ey+s);
+          ctx.stroke();
+        });
+      } else {
+        ctx.fillStyle = '#dde8b0';
+        [-1,1].forEach(side => {
+          ctx.beginPath();
+          ctx.arc(sx + side*headR*0.38, headY - headR*0.08, headR*0.22, 0, Math.PI*2);
+          ctx.fill();
+        });
+        ctx.fillStyle = '#000';
+        [-1,1].forEach(side => {
+          ctx.beginPath();
+          ctx.arc(sx + side*headR*0.38 + headR*0.06, headY - headR*0.08, headR*0.1, 0, Math.PI*2);
+          ctx.fill();
+        });
+        // Mouth (jagged)
+        ctx.fillStyle = '#220000';
+        ctx.beginPath();
+        const mx0 = sx - headR*0.32, my0 = headY + headR*0.28;
+        ctx.moveTo(mx0, my0);
+        for (let i=0; i<=4; i++) {
+          const mx = mx0 + (headR*0.64)*i/4;
+          const my = my0 + (i%2===0 ? 0 : headR*0.15);
+          ctx.lineTo(mx, my);
+        }
+        ctx.lineTo(mx0 + headR*0.64, my0);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // Hair (a few strands)
+      ctx.strokeStyle = '#1a1410';
+      ctx.lineWidth = Math.max(1, headR*0.12);
+      [-0.3,0,0.3].forEach(off => {
+        ctx.beginPath();
+        ctx.moveTo(sx + off*headR*1.8, headY - headR*0.7);
+        ctx.lineTo(sx + off*headR*1.4 + off*headR*0.5*(Math.sin(t*0.3+off)), headY - headR*1.1);
+        ctx.stroke();
+      });
+
+      // HP bar (for brutes only)
+      if (z.type === 'brute' && !z.dead && baseH > 40) {
+        const bw = baseW * 0.8;
+        const bh = Math.max(2, baseH*0.04);
+        const bx = sx - bw/2;
+        const by = headY - headR - bh - 3;
+        ctx.fillStyle = '#330000';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#aaff00';
+        ctx.fillRect(bx, by, bw * (z.hp/z.maxHp), bh);
+      }
+
+      // Hit flash
+      if (z.hitTimer > 0) {
+        ctx.fillStyle = `rgba(255,40,0,${z.hitTimer/12 * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(sx, headY, headR + baseW*0.15, 0, Math.PI*2);
+        ctx.fill();
+        z.hitTimer--;
+      }
+
+      // Store hitbox
+      z._sx = sx; z._feetY = feetY; z._headY = headY;
+      z._headR = headR; z._baseH = baseH; z._baseW = baseW;
+    }
+
+    // === PARTICLES ===
+    function addBlood(x, y, count) {
+      for (let i=0; i<count; i++) {
+        const angle = Math.random()*Math.PI*2;
+        const spd   = Math.random()*3+1;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle)*spd,
+          vy: Math.sin(angle)*spd - 1,
+          life: 18+Math.random()*18,
+          maxLife: 36,
+          r: Math.random()*3+1.5,
+        });
+      }
+    }
+
+    function updateParticles() {
+      for (const p of particles) {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.18;
+        p.life--;
+      }
+      particles = particles.filter(p => p.life > 0);
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.fillStyle = '#cc0022';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // === MUZZLE FLASH ===
+    function drawMuzzleFlash() {
+      if (muzzleFlash <= 0) return;
+      const cx = mouseX, cy = mouseY;
+      ctx.globalAlpha = muzzleFlash/8;
+      ctx.fillStyle = '#ffee88';
+      ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+      muzzleFlash--;
+    }
+
+    // === SHOOT ===
+    function shoot(mx, my) {
+      if (state !== 'playing') return;
+      if (reloading) return;
+      if (ammo <= 0) { startReload(); return; }
+
+      ammo--;
+      muzzleFlash = 8;
+      refreshAmmoHUD();
+      if (ammo === 0) setTimeout(startReload, 200);
+
+      // Sort by depth descending (closest first)
+      const sorted = zombies.filter(z => !z.dead && z._baseH > 0)
+        .sort((a,b) => b.depth - a.depth);
+
+      for (const z of sorted) {
+        const dx = mx - z._sx, dy = my - z._feetY;
+        const totalH = z._baseH;
+        const totalW = z._baseW;
+        if (Math.abs(dx) > totalW * 0.6) continue;
+        if (dy < -totalH || dy > 0) continue;
+
+        // Headshot: top 22% of sprite height = instant kill
+        const headshot = my <= z._headY + z._headR * 1.1;
+        addBlood(mx, my, headshot ? 16 : 8);
+
+        if (headshot) {
+          z.hp = 0;
+        } else {
+          z.hp--;
+          z.hitTimer = 12;
+        }
+
+        if (z.hp <= 0) {
+          z.dead = true;
+          z.deathTimer = 40;
+          const pts = z.score * (headshot ? 3 : 1);
+          score += pts;
+          waveKills++;
+          document.getElementById('score').textContent = score;
+          showFloatingScore(mx, my - 20, headshot ? 'HEADSHOT! +'+pts : '+'+pts, headshot);
+        }
+        break; // one bullet hits one zombie
+      }
+
+      if (ammo === 0 && !reloading) startReload();
+    }
+
+    // === FLOATING SCORE TEXT ===
+    let floatingTexts = [];
+    function showFloatingScore(x, y, text, headshot) {
+      floatingTexts.push({ x, y, text, headshot, life: 50 });
+    }
+    function drawFloatingTexts() {
+      for (const ft of floatingTexts) {
+        ctx.globalAlpha = ft.life / 50;
+        ctx.font = (ft.headshot ? 'bold ' : '') + Math.max(8, 11) + 'px "Press Start 2P"';
+        ctx.fillStyle = ft.headshot ? '#ffee00' : '#aaff00';
+        ctx.textAlign = 'center';
+        ctx.fillText(ft.text, ft.x, ft.y - (50 - ft.life) * 0.5);
+        ft.y -= 0.6; ft.life--;
+      }
+      floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+    }
+
+    // === RELOAD ===
+    function startReload() {
+      if (reloading || ammo === 6) return;
+      reloading = true;
+      reloadTimer = 0;
+      refreshAmmoHUD();
+    }
+
+    // === UPDATE ===
+    function update() {
+      // Reload
+      if (reloading) {
+        reloadTimer++;
+        if (reloadTimer >= 90) {
+          reloading = false; ammo = 6;
+          refreshAmmoHUD();
+        }
+      }
+
+      // Spawn
+      if (spawnQueue.length > 0) {
+        spawnTimer--;
+        if (spawnTimer <= 0) {
+          spawnZombie(spawnQueue.pop());
+          spawnTimer = spawnInterval;
+        }
+      }
+
+      // Update zombies
+      for (const z of zombies) {
+        if (z.dead) {
+          z.deathTimer--;
+          if (z.deathTimer <= 0) z._remove = true;
+          continue;
+        }
+        z.depth += z.speed;
+        if (z.depth >= 1.0) {
+          // Reached player
+          z._remove = true;
+          hp = Math.max(0, hp - 1);
+          // Rebuild hearts
+          const hc = document.getElementById('hearts');
+          Array.from(hc.children).forEach((el,i) => {
+            el.className = 'heart' + (i < hp ? '' : ' empty');
+          });
+          shakeX = 6; shakeY = 4;
+          if (hp <= 0) { endGame(); return; }
+        }
+      }
+      zombies = zombies.filter(z => !z._remove);
+
+      // Wave clear check
+      if (!waveClearing && spawnQueue.length === 0 && waveKills >= waveTotal && zombies.length === 0) {
+        waveClearing = true;
+        setTimeout(() => {
+          wave++;
+          if (wave >= WAVE_DEFS.length) {
+            endGame(true);
+          } else {
+            startWave();
+          }
+        }, 1800);
+      }
+
+      // Screen shake decay
+      shakeX *= 0.7; shakeY *= 0.7;
+      updateParticles();
+    }
+
+    // === DRAW CROSSHAIR ===
+    function drawCrosshair() {
+      const mx = mouseX, my = mouseY;
+      ctx.strokeStyle = reloading ? '#ff4400' : '#aaff00';
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = reloading ? '#ff4400' : '#aaff00';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(mx-12, my); ctx.lineTo(mx-4, my);
+      ctx.moveTo(mx+4, my);  ctx.lineTo(mx+12, my);
+      ctx.moveTo(mx, my-12); ctx.lineTo(mx, my-4);
+      ctx.moveTo(mx, my+4);  ctx.lineTo(mx, my+12);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(mx, my, 6, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // === MAIN DRAW ===
+    function draw() {
+      ctx.save();
+      if (Math.abs(shakeX) > 0.5) {
+        ctx.translate(shakeX * (Math.random()-0.5)*2, shakeY * (Math.random()-0.5)*2);
+      }
+
+      drawBg();
+
+      // Sort zombies: far first (so closer ones draw on top)
+      const sorted = zombies.slice().sort((a,b) => a.depth - b.depth);
+      for (const z of sorted) drawZombie(z);
+
+      drawParticles();
+      drawMuzzleFlash();
+      drawFloatingTexts();
+      drawCrosshair();
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      draw();
+      raf = requestAnimationFrame(loop);
+    }
+
+    function endGame(won) {
+      cancelAnimationFrame(raf); state = 'over';
+      const ol = document.getElementById('overlay');
+      ol.innerHTML = `
+        <h2>${won ? 'SURVIVE!' : 'YOU DIED'}</h2>
+        <p class="sub">SCORE: ${score}<br>WAVE: ${wave+1}</p>
+        <p class="blink">CLICK TO RETRY</p>`;
+      ol.style.display = 'flex';
+    }
+
+    function start() {
+      document.getElementById('overlay').style.display = 'none';
+      state = 'playing';
+      init();
+      raf = requestAnimationFrame(loop);
+    }
+
+    // === STARS (static) ===
+    const STARS = Array.from({length:55}, () => ({
+      x: Math.random()*W, y: Math.random()*HORIZON*0.9,
+      r: Math.random()<0.15 ? 1.5 : 1,
+    }));
+
+    // === EVENTS ===
+    document.getElementById('wrap').addEventListener('mousemove', e => {
+      const r = canvas.getBoundingClientRect();
+      mouseX = e.clientX - r.left;
+      mouseY = e.clientY - r.top;
+    });
+
+    document.getElementById('wrap').addEventListener('click', e => {
+      if (state === 'idle' || state === 'over') { start(); return; }
+      const r = canvas.getBoundingClientRect();
+      shoot(e.clientX - r.left, e.clientY - r.top);
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'r' || e.key === 'R') {
+        if (state === 'playing') startReload();
+      }
+    });
+
+    // Initial draw (title screen)
+    drawBg();
+  </script>
+</body>
+</html>
